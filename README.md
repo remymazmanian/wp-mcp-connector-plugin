@@ -2,11 +2,12 @@
 
 Serve a self-hosted WordPress site to AI clients over the Model Context Protocol.
 
-Claude Desktop, Claude Code, Cursor, Grok and anything else that speaks MCP can read and manage the site through 25 permission-gated tools: posts, pages, media, taxonomies, comments, SEO metadata, plugin and theme inventory, site health, and a set of emulated WP-CLI commands.
+Claude Desktop, Claude Code, Cursor, Grok and anything else that speaks MCP can read and manage the site through 32 permission-gated tools: posts, pages, media, taxonomies, comments, SEO metadata, plugin and theme inventory, site health, and a set of emulated WP-CLI commands.
 
 - **No Composer. No npm. No build step.** The plugin is plain PHP and runs on a stock WordPress install.
 - **Two transports.** Streamable HTTP (current spec) and HTTP+SSE (legacy clients).
-- **Two auth methods.** Application Passwords (primary) and optional Bearer tokens.
+- **Three auth routes.** Application Passwords (primary), optional Bearer tokens, and a built-in OAuth 2.1 authorization server with PKCE for hosted clients.
+- **One call publishes.** `wp_publish_article` builds a finished post — body, featured image, in-article images at named paragraphs, categories, tags and SEO — in a single tool call.
 - **Modern where it counts.** On WordPress 6.9+ every tool is also registered with the core Abilities API, so the same definitions are reachable from `/wp-json/wp-abilities/v1/` and from the official MCP Adapter if you install it.
 
 ---
@@ -44,8 +45,9 @@ Claude Desktop / Claude Code / Cursor / Grok
                           └───────────────────┬──────────────────┘
               ┌──────────────┬────────────────┼──────────────┬─────────────┐
            Auth          Rate limiter     Registry        Abilities     Logger
-      (App Password    (sliding window   (25 tools,       mirror →
-       + Bearer)        per user)         cap-gated)      WP core Abilities API
+      (App Password    (sliding window   (32 tools,       mirror →
+       + Bearer         per user)         cap-gated)      WP core Abilities API
+       + OAuth 2.1)
 ```
 
 The protocol engine is transport agnostic. Streamable HTTP and legacy SSE both hand messages to the same `WPMCP_Server`, and differ only in how they frame the reply, so behaviour cannot drift between them.
@@ -144,9 +146,9 @@ A profile decides which tools are *offered*. The connected WordPress user still 
 | Profile | Tools | Use for |
 |---|---|---|
 | **Read only** | 12 | research, audits, reporting |
-| **Author** | 18 | drafting and editing content, uploading media |
-| **Editor** | 22 | the above plus trashing content and moderating comments |
-| **Administrator** | 25 | everything, including permanent deletion and option writes |
+| **Author** | 25 | drafting and editing content, uploading media |
+| **Editor** | 29 | the above plus trashing content and moderating comments |
+| **Administrator** | 32 | everything, including permanent deletion and option writes |
 | **Custom** | your choice | tick exactly the tools you want |
 
 The default is **Author**: it can create and update content but cannot delete anything, cannot touch options, and cannot run the CLI emulator.
@@ -404,7 +406,7 @@ To get a Client ID by hand: **Settings → MCP Connector → OAuth clients**, en
 
 **What happens when you connect:** the client sends you to a consent screen on your own site. It names the application, the WordPress account you are signed in as, the access level, how many tools that grants, and lists any destructive ones explicitly. Approving mints a token; declining sends the client away with nothing. Every approval appears under **Authorized connections**, and revoking one kills its access token immediately — not at the end of the hour.
 
-**Scopes map onto the permission profiles**, so `mcp:author` produces exactly the 18-tool Author surface, and the same narrowing rule applies: a scope can never exceed the site profile.
+**Scopes map onto the permission profiles**, so `mcp:author` produces exactly the 25-tool Author surface, and the same narrowing rule applies: a scope can never exceed the site profile.
 
 What is deliberately not implemented: implicit grant, password grant, client credentials grant, and `plain` PKCE. OAuth 2.1 removes the first three; the fourth is downgrade bait. Authorization codes are single use with a 90-second life, refresh tokens rotate on every use, and access tokens last an hour.
 
@@ -419,7 +421,7 @@ If you want the AI to act as an administrator — because you want it managing o
 A scope narrows a token to fewer tools than the site profile allows, and **can never widen it**. Both gates are evaluated, so the effective surface is the intersection:
 
 ```
-site profile = admin  +  token scope = author   →  18 tools
+site profile = admin  +  token scope = author   →  25 tools
 site profile = admin  +  token scope = read_only →  12 tools
 site profile = read_only + token scope = admin   →  12 tools   (the token cannot widen)
 ```
@@ -466,7 +468,7 @@ WordPress:    7.0.3 on PHP 8.2.29
 Plugin:       1.0.0
 Authenticated as: remy (administrator) via application-password
 Profile:      author
-Tools:        18 of 25 available
+Tools:        25 of 32 available
 Abilities API: yes
 ```
 
@@ -489,7 +491,7 @@ Flags `--url`, `--user`, `--password`, `--token`, `--probe`, `--verbose`, `--sav
 
 ## Tool reference
 
-25 tools. Each is gated by a WordPress capability *and* by the active profile.
+32 tools. Each is gated by a WordPress capability *and* by the active profile.
 
 ### Content
 
@@ -498,10 +500,13 @@ Flags `--url`, `--user`, `--password`, `--token`, `--probe`, `--verbose`, `--sav
 | `wp_list_posts` | `edit_posts` | read_only + |
 | `wp_get_post` | `edit_posts` | read_only + |
 | `wp_search_content` | `edit_posts` | read_only + |
+| `wp_publish_article` | `edit_posts` | author + |
 | `wp_create_post` | `edit_posts` | author + |
 | `wp_update_post` | `edit_posts` | author + |
 | `wp_update_seo_meta` | `edit_posts` | author + |
 | `wp_delete_post` | `delete_posts` | editor + |
+
+**`wp_publish_article`** is the one call that does everything: it builds a finished post — body, excerpt, categories, tags, featured image, in-article images placed after named paragraphs, and SEO metadata — in a single call. Prefer it over separate create, upload, insert and SEO calls. If an image fails, the article is still created and the response names the failure, so nothing is lost. See [`HOW-TO-USE.md`](HOW-TO-USE.md) for the full argument shape.
 
 `wp_create_post` and `wp_update_post` handle title, body, excerpt, status, slug, date, author, categories, tags, featured image, parent, menu order, page template, comment status and SEO metadata in one call. Missing categories and tags are created automatically.
 
