@@ -805,8 +805,9 @@ Error messages follow the same principle: they say what went wrong, what is allo
 
 Copyright (C) 2026 Remy Mazmanian.
 
-Released under **GPL-2.0-or-later**, matching WordPress. The full text is in
-[`LICENSE`](LICENSE).
+Released under **GPL-2.0-or-later**, matching WordPress. The full licence text
+is in [`LICENSE`](LICENSE); the copyright notice and the redistribution notices
+it requires are in [`NOTICE`](NOTICE). Both ship with the plugin.
 
 You are free to use, modify and redistribute this plugin, including
 commercially. In exchange the licence asks two things of anyone who passes it
