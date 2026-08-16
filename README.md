@@ -798,4 +798,20 @@ Error messages follow the same principle: they say what went wrong, what is allo
 
 ## Licence
 
-GPL-2.0-or-later, matching WordPress.
+Copyright (C) 2026 Remy Mazmanian.
+
+Released under **GPL-2.0-or-later**, matching WordPress. The full text is in
+[`LICENSE`](LICENSE).
+
+You are free to use, modify and redistribute this plugin, including
+commercially. In exchange the licence asks two things of anyone who passes it
+on:
+
+- **Keep the copyright notice intact and visible** on every copy you
+  redistribute, in the source headers and in `LICENSE` (GPL-2.0 §1).
+- **Mark what you changed.** Modified files must carry prominent notices saying
+  they were changed, and the date (GPL-2.0 §2a).
+
+Derivative works must also be distributed under the same licence (§2b). If you
+build something on top of this, a line crediting the original and linking back
+is appreciated beyond what the licence strictly requires.
