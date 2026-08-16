@@ -113,7 +113,7 @@ wp-mcp-connector/
 
 ## Install and activate
 
-A short connection walkthrough lives at [remymazmanian.com/connect-claude-to-wordpress-guide](https://remymazmanian.com/connect-claude-to-wordpress-guide/).
+A short connection walkthrough for Grok, ChatGPT and Claude lives at [remymazmanian.com/connect-grok-chatgpt-claude-to-wordpress](https://remymazmanian.com/connect-grok-chatgpt-claude-to-wordpress/).
 
 
 **Upload the folder:**
