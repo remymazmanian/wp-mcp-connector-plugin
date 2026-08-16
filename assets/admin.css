@@ -1,0 +1,683 @@
+/**
+ * WP MCP Connector admin styles.
+ *
+ * Written to sit inside wp-admin rather than on top of it: WordPress's own
+ * greys, its accent blue, its 13px UI text, its 3px radii. The screen should
+ * read as part of the admin an operator already knows, not as a plugin that
+ * brought its own design language. Personality lives in spacing and rhythm.
+ *
+ * Colour comes from WordPress's admin CSS variables where they exist, with
+ * literal fallbacks so the screen survives an unusual admin colour scheme.
+ */
+
+.wpmcp {
+	--wpmcp-fg: #1d2327;
+	--wpmcp-muted: #646970;
+	--wpmcp-line: #dcdcde;
+	--wpmcp-line-soft: #f0f0f1;
+	--wpmcp-surface: #fff;
+	--wpmcp-sunken: #f6f7f7;
+	--wpmcp-accent: #2271b1;
+	--wpmcp-accent-dark: #135e96;
+	--wpmcp-good: #007017;
+	--wpmcp-good-bg: #edfaef;
+	--wpmcp-warn: #8a5700;
+	--wpmcp-warn-bg: #fcf6e6;
+	--wpmcp-bad: #b32d2e;
+	--wpmcp-bad-bg: #fcf0f1;
+
+	max-width: 960px;
+	color: var(--wpmcp-fg);
+}
+
+/* --------------------------------------------------------------------------
+ * Header
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px 16px;
+	margin: 4px 0 18px;
+}
+
+.wpmcp-head h1 {
+	margin: 0;
+	padding: 0;
+	font-size: 23px;
+	font-weight: 400;
+	line-height: 1.3;
+}
+
+.wpmcp-head p {
+	margin: 0;
+	color: var(--wpmcp-muted);
+	font-size: 13px;
+}
+
+/* Status pill. Never colour alone: each state carries a word and a dot. */
+.wpmcp-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	padding: 4px 11px 4px 9px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.wpmcp-status::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: currentColor;
+	flex: none;
+}
+
+.wpmcp-status.is-on {
+	color: var(--wpmcp-good);
+	background: var(--wpmcp-good-bg);
+	border-color: #b8e6c1;
+}
+
+.wpmcp-status.is-off {
+	color: var(--wpmcp-muted);
+	background: var(--wpmcp-sunken);
+	border-color: var(--wpmcp-line);
+}
+
+/* --------------------------------------------------------------------------
+ * Panels
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-panel {
+	background: var(--wpmcp-surface);
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	margin: 0 0 20px;
+}
+
+.wpmcp-panel > h2 {
+	margin: 0;
+	padding: 14px 20px;
+	border-bottom: 1px solid var(--wpmcp-line);
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.wpmcp-panel-body {
+	padding: 20px;
+}
+
+/* More space above a heading than below it. */
+.wpmcp-panel-body > h3 {
+	margin: 28px 0 8px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.wpmcp-panel-body > h3:first-child {
+	margin-top: 0;
+}
+
+.wpmcp-panel-body > p:last-child,
+.wpmcp-panel-body > table:last-child {
+	margin-bottom: 0;
+}
+
+.wpmcp-note {
+	margin: 0 0 16px;
+	color: var(--wpmcp-muted);
+	font-size: 13px;
+	line-height: 1.6;
+	max-width: 68ch;
+}
+
+.wpmcp-panel .form-table {
+	margin-top: 0;
+}
+
+.wpmcp-panel .form-table th {
+	padding-left: 0;
+	font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+ * Platform picker
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-platforms {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+	gap: 8px;
+	margin: 0 0 24px;
+	padding: 0;
+	list-style: none;
+}
+
+.wpmcp-platform {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	width: 100%;
+	padding: 12px 13px;
+	background: var(--wpmcp-surface);
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	color: var(--wpmcp-fg);
+	cursor: pointer;
+	transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.wpmcp-platform:hover {
+	border-color: #a7aaad;
+	background: var(--wpmcp-sunken);
+}
+
+.wpmcp-platform:focus-visible {
+	outline: 2px solid var(--wpmcp-accent);
+	outline-offset: 1px;
+}
+
+.wpmcp-platform[aria-selected="true"] {
+	border-color: var(--wpmcp-accent);
+	background: var(--wpmcp-surface);
+	box-shadow: inset 0 0 0 1px var(--wpmcp-accent);
+}
+
+.wpmcp-platform .wpmcp-icon {
+	width: 18px;
+	height: 18px;
+	flex: none;
+	margin-top: 1px;
+	color: var(--wpmcp-muted);
+}
+
+.wpmcp-platform[aria-selected="true"] .wpmcp-icon {
+	color: var(--wpmcp-accent);
+}
+
+.wpmcp-platform-name {
+	display: block;
+	font-weight: 600;
+	line-height: 1.35;
+}
+
+.wpmcp-platform-method {
+	display: block;
+	margin-top: 1px;
+	color: var(--wpmcp-muted);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+/* --------------------------------------------------------------------------
+ * Recipe detail
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-recipe[hidden] {
+	display: none;
+}
+
+.wpmcp-recipe-head {
+	margin: 0 0 4px;
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.wpmcp-recipe-summary {
+	margin: 0 0 20px;
+	color: var(--wpmcp-muted);
+	font-size: 13px;
+	line-height: 1.6;
+	max-width: 68ch;
+}
+
+.wpmcp-steps {
+	margin: 0 0 20px;
+	padding: 0 0 0 20px;
+	max-width: 68ch;
+}
+
+.wpmcp-steps li {
+	margin: 0 0 6px;
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.wpmcp-sub {
+	margin: 24px 0 0;
+	padding: 16px 0 0;
+	border-top: 1px solid var(--wpmcp-line-soft);
+}
+
+.wpmcp-sub h4 {
+	margin: 0 0 6px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+ * Code blocks with copy
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-code {
+	margin: 0 0 14px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--wpmcp-sunken);
+}
+
+.wpmcp-code-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 7px 8px 7px 12px;
+	border-bottom: 1px solid var(--wpmcp-line);
+	background: var(--wpmcp-surface);
+}
+
+.wpmcp-code-label {
+	color: var(--wpmcp-muted);
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.4;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.wpmcp-code pre {
+	margin: 0;
+	padding: 12px;
+	overflow-x: auto;
+	font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
+	font-size: 12.5px;
+	line-height: 1.65;
+	tab-size: 2;
+}
+
+.wpmcp-code code {
+	background: none;
+	padding: 0;
+	font-size: inherit;
+	white-space: pre;
+}
+
+/* Copy button. Three states, and the confirmation says a word as well as
+   changing colour, so it survives being unable to see the green. */
+.wpmcp-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	flex: none;
+	padding: 4px 10px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 3px;
+	background: var(--wpmcp-surface);
+	color: var(--wpmcp-fg);
+	font: inherit;
+	font-size: 12px;
+	line-height: 1.6;
+	cursor: pointer;
+	transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.wpmcp-copy:hover {
+	border-color: var(--wpmcp-accent);
+	color: var(--wpmcp-accent-dark);
+}
+
+.wpmcp-copy:focus-visible {
+	outline: 2px solid var(--wpmcp-accent);
+	outline-offset: 1px;
+}
+
+.wpmcp-copy.is-done {
+	border-color: #b8e6c1;
+	background: var(--wpmcp-good-bg);
+	color: var(--wpmcp-good);
+}
+
+.wpmcp-copy.is-failed {
+	border-color: #f0c4c5;
+	background: var(--wpmcp-bad-bg);
+	color: var(--wpmcp-bad);
+}
+
+.wpmcp-copy .wpmcp-icon {
+	width: 13px;
+	height: 13px;
+}
+
+/* --------------------------------------------------------------------------
+ * Callouts
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-callout {
+	display: flex;
+	gap: 9px;
+	padding: 11px 14px;
+	margin: 0 0 16px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	background: var(--wpmcp-sunken);
+	font-size: 13px;
+	line-height: 1.6;
+	max-width: 72ch;
+}
+
+.wpmcp-callout .wpmcp-icon {
+	width: 16px;
+	height: 16px;
+	flex: none;
+	margin-top: 2px;
+}
+
+.wpmcp-callout p {
+	margin: 0;
+}
+
+.wpmcp-callout.is-warn {
+	border-color: #f0dca6;
+	background: var(--wpmcp-warn-bg);
+	color: var(--wpmcp-warn);
+}
+
+.wpmcp-callout.is-tip {
+	border-color: var(--wpmcp-line);
+	color: var(--wpmcp-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Fact list
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-facts {
+	margin: 0 0 16px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.wpmcp-fact {
+	display: grid;
+	grid-template-columns: 190px 1fr;
+	gap: 4px 16px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--wpmcp-line-soft);
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.wpmcp-fact:last-child {
+	border-bottom: 0;
+}
+
+.wpmcp-fact:nth-child(odd) {
+	background: #fbfbfc;
+}
+
+.wpmcp-fact dt {
+	color: var(--wpmcp-muted);
+	font-weight: 600;
+	margin: 0;
+}
+
+.wpmcp-fact dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.wpmcp-fact dd.is-mono {
+	font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
+	font-size: 12.5px;
+}
+
+/* --------------------------------------------------------------------------
+ * Tool matrix
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-toolgroup {
+	margin: 0 0 18px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.wpmcp-toolgroup > h4 {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 0;
+	padding: 9px 14px;
+	background: var(--wpmcp-sunken);
+	border-bottom: 1px solid var(--wpmcp-line);
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--wpmcp-muted);
+}
+
+.wpmcp-tool {
+	display: grid;
+	grid-template-columns: 26px 1fr auto;
+	align-items: baseline;
+	gap: 4px 10px;
+	padding: 9px 14px;
+	border-bottom: 1px solid var(--wpmcp-line-soft);
+	font-size: 13px;
+}
+
+.wpmcp-tool:last-child {
+	border-bottom: 0;
+}
+
+.wpmcp-tool code {
+	background: none;
+	padding: 0;
+	font-size: 12.5px;
+	font-weight: 600;
+}
+
+.wpmcp-tool-title {
+	display: block;
+	color: var(--wpmcp-muted);
+	font-size: 12px;
+	line-height: 1.5;
+	margin-top: 1px;
+}
+
+.wpmcp-tag {
+	display: inline-block;
+	padding: 1px 7px;
+	border-radius: 3px;
+	border: 1px solid var(--wpmcp-line);
+	background: var(--wpmcp-sunken);
+	color: var(--wpmcp-muted);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.7;
+	white-space: nowrap;
+}
+
+.wpmcp-tag.is-destructive {
+	border-color: #f0c4c5;
+	background: var(--wpmcp-bad-bg);
+	color: var(--wpmcp-bad);
+}
+
+.wpmcp-tag.is-read {
+	border-color: #c7ddf0;
+	background: #f0f6fc;
+	color: var(--wpmcp-accent-dark);
+}
+
+/* --------------------------------------------------------------------------
+ * Profile chooser
+ * ----------------------------------------------------------------------- */
+
+.wpmcp-profiles {
+	display: grid;
+	gap: 8px;
+	margin: 0 0 8px;
+	max-width: 640px;
+}
+
+.wpmcp-profile {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: baseline;
+	gap: 4px 10px;
+	padding: 12px 14px;
+	border: 1px solid var(--wpmcp-line);
+	border-radius: 4px;
+	cursor: pointer;
+	transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.wpmcp-profile:hover {
+	border-color: #a7aaad;
+	background: var(--wpmcp-sunken);
+}
+
+.wpmcp-profile:has(input:checked) {
+	border-color: var(--wpmcp-accent);
+	box-shadow: inset 0 0 0 1px var(--wpmcp-accent);
+}
+
+.wpmcp-profile:has(input:focus-visible) {
+	outline: 2px solid var(--wpmcp-accent);
+	outline-offset: 1px;
+}
+
+.wpmcp-profile input {
+	margin: 1px 0 0;
+}
+
+.wpmcp-profile-name {
+	font-weight: 600;
+	font-size: 13px;
+}
+
+.wpmcp-profile-count {
+	color: var(--wpmcp-muted);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.wpmcp-profile-desc {
+	grid-column: 2 / -1;
+	color: var(--wpmcp-muted);
+	font-size: 12px;
+	line-height: 1.55;
+}
+
+/* --------------------------------------------------------------------------
+ * Tables
+ * ----------------------------------------------------------------------- */
+
+.wpmcp .widefat td,
+.wpmcp .widefat th {
+	vertical-align: middle;
+}
+
+.wpmcp-empty {
+	padding: 22px 14px;
+	color: var(--wpmcp-muted);
+	font-size: 13px;
+	line-height: 1.6;
+	text-align: center;
+}
+
+.wpmcp-empty strong {
+	display: block;
+	color: var(--wpmcp-fg);
+	margin-bottom: 3px;
+}
+
+.wpmcp-inline-form {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+}
+
+.wpmcp-issued {
+	margin: 0 0 20px;
+	padding: 14px 16px;
+	border: 1px solid #b8e6c1;
+	border-radius: 4px;
+	background: var(--wpmcp-good-bg);
+}
+
+.wpmcp-issued p {
+	margin: 0 0 8px;
+	font-size: 13px;
+	line-height: 1.6;
+}
+
+.wpmcp-result-ok {
+	color: var(--wpmcp-good);
+	font-weight: 600;
+}
+
+.wpmcp-result-bad {
+	color: var(--wpmcp-bad);
+}
+
+.wpmcp-mono {
+	font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
+	font-size: 12.5px;
+}
+
+/* --------------------------------------------------------------------------
+ * Responsive
+ * ----------------------------------------------------------------------- */
+
+@media screen and (max-width: 782px) {
+	.wpmcp-platforms {
+		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+	}
+
+	.wpmcp-fact {
+		grid-template-columns: 1fr;
+		gap: 2px;
+	}
+
+	.wpmcp-tool {
+		grid-template-columns: 22px 1fr;
+	}
+
+	.wpmcp-tool .wpmcp-tag {
+		grid-column: 2;
+		justify-self: start;
+		margin-top: 3px;
+	}
+
+	.wpmcp-panel-body {
+		padding: 16px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wpmcp-platform,
+	.wpmcp-copy,
+	.wpmcp-profile {
+		transition: none;
+	}
+}

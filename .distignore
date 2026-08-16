@@ -1,0 +1,12 @@
+# Excluded when packaging the plugin for distribution or deploying to a server.
+#
+# The bridge is a developer tool: it runs on the operator's machine, not on the
+# web host. Its node_modules are devDependencies only (TypeScript and type
+# definitions) and add ~26 MB of files that would never be executed on the site.
+
+bridge/node_modules
+bridge/src
+bridge/tsconfig.json
+.distignore
+.git
+.gitignore

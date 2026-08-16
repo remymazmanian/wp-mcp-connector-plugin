@@ -1,0 +1,34 @@
+{
+  "name": "wp-mcp-bridge",
+  "version": "1.0.0",
+  "description": "stdio to HTTP bridge for the WP MCP Connector WordPress plugin. Lets stdio-only MCP clients talk to a WordPress site.",
+  "author": "Remy Mazmanian",
+  "license": "GPL-2.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "wp-mcp-bridge": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "probe": "node dist/index.js --probe",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "wordpress",
+    "claude"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
