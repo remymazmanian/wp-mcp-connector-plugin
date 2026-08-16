@@ -1,0 +1,18 @@
+# Dependencies. The bridge has no runtime dependencies; these are TypeScript
+# and type definitions only, and they are ~26 MB.
+node_modules/
+
+# Build output. Rebuild with `npm --prefix bridge install && npm --prefix bridge run build`.
+bridge/dist/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Logs and local scratch
+*.log
+npm-debug.log*
