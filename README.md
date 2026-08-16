@@ -113,6 +113,9 @@ wp-mcp-connector/
 
 ## Install and activate
 
+A short connection walkthrough lives at [remymazmanian.com/connect-claude-to-wordpress-guide](https://remymazmanian.com/connect-claude-to-wordpress-guide/).
+
+
 **Upload the folder:**
 
 ```bash
