@@ -4,6 +4,7 @@
  * Description: Serves this WordPress site to AI clients (Claude, Claude Code, Cursor, Grok, ChatGPT) as a Model Context Protocol server, over Streamable HTTP and legacy HTTP+SSE, authenticated with Application Passwords, Bearer tokens, or a built-in OAuth 2.1 server.
  * Version:     1.0.1
  * Requires at least: 6.4
+ * Tested up to: 7.1
  * Requires PHP: 7.4
  * Author:      Remy Mazmanian
  * License:     GPL-2.0-or-later
