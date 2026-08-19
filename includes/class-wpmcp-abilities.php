@@ -80,6 +80,20 @@ class WPMCP_Abilities {
 				'execute_callback'    => $this->make_execute_callback( $tool ),
 				'permission_callback' => $this->make_permission_callback( $tool ),
 				'meta'                => array(
+					// Both flags on purpose, and both are load-bearing.
+					//
+					// 'public' is the unified exposure flag added in WordPress
+					// 7.1: one declaration that means "external clients may see
+					// this", which the REST API, the MCP Adapter and AI agents
+					// all read. It defaults to false, so it has to be explicit.
+					//
+					// 'show_in_rest' stays because this plugin supports 6.4+ and
+					// abilities register on 6.9+. WordPress 6.9 and 7.0 predate
+					// 'public' and would expose nothing without it. In 7.1 the
+					// resolution order is show_in_rest ?? public ?? false, so the
+					// two agree rather than fight. Do not "tidy" this to one key
+					// until the plugin's floor is WordPress 7.1.
+					'public'       => true,
 					'show_in_rest' => true,
 					'annotations'  => array(
 						'readonly'    => ! empty( $tool['annotations']['readOnlyHint'] ),
