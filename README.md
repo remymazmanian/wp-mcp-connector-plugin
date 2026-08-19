@@ -8,7 +8,7 @@ Claude Desktop, Claude Code, Cursor, Grok and anything else that speaks MCP can 
 - **Two transports.** Streamable HTTP (current spec) and HTTP+SSE (legacy clients).
 - **Three auth routes.** Application Passwords (primary), optional Bearer tokens, and a built-in OAuth 2.1 authorization server with PKCE for hosted clients.
 - **One call publishes.** `wp_publish_article` builds a finished post — body, featured image, in-article images at named paragraphs, categories, tags and SEO — in a single tool call.
-- **Modern where it counts.** On WordPress 6.9+ every tool is also registered with the core Abilities API, so the same definitions are reachable from `/wp-json/wp-abilities/v1/` and from the official MCP Adapter if you install it.
+- **Modern where it counts.** On WordPress 6.9+ every tool is also registered with the core Abilities API, so the same definitions are reachable from `/wp-json/wp-abilities/v1/` and from the official MCP Adapter if you install it. On 7.1+ each ability also carries the unified `public` exposure flag that core, the MCP Adapter and AI agents read.
 
 ---
 
@@ -103,7 +103,7 @@ wp-mcp-connector/
 
 | | Minimum | Notes |
 |---|---|---|
-| WordPress | 6.4 | 6.9+ additionally registers abilities in core |
+| WordPress | 6.4 | 6.9+ additionally registers abilities in core; tested up to 7.1 |
 | PHP | 7.4 | tested on 8.2 and 8.4 |
 | HTTPS | required in production | local environments are exempt |
 | Composer | not needed | — |
@@ -468,7 +468,7 @@ node dist/index.js --probe
 ```
 Connected to: Example Site (https://example.com/)
 WordPress:    7.0.3 on PHP 8.2.29
-Plugin:       1.0.0
+Plugin:       1.0.1
 Authenticated as: remy (administrator) via application-password
 Profile:      author
 Tools:        25 of 32 available
