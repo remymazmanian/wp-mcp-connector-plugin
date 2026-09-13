@@ -174,12 +174,12 @@ Application Passwords are built into WordPress and are the recommended credentia
 2. Scroll to **Application Passwords**.
 3. Enter a name that identifies the client, for example `Claude Desktop, work laptop`.
 4. Click **Add New Application Password**.
-5. Copy the value shown. It looks like `abcd EFGH ijkl MNOP qrst UVWX` and **is displayed once only**.
+5. Copy the value shown. It looks like `xxxx XXXX xxxx XXXX xxxx XXXX` and **is displayed once only**.
 
 The spaces are cosmetic and WordPress ignores them. Use it as the HTTP Basic password with the account's **username** (not email):
 
 ```bash
-curl -u 'remy:abcdEFGHijklMNOPqrstUVWX' https://example.com/wp-json/mcp/v1/health
+curl -u 'YOUR_USERNAME:YOUR_APP_PASSWORD' https://example.com/wp-json/mcp/v1/health
 ```
 
 **Create a dedicated account for this.** An account with the Author or Editor role, used only by the AI client, means a leaked credential cannot install plugins or read user emails, and revoking it does not disturb your own login.
@@ -331,8 +331,8 @@ Edit the config file:
       "args": ["/absolute/path/to/wp-mcp-connector/bridge/dist/index.js"],
       "env": {
         "WP_MCP_URL": "https://example.com/wp-json/mcp/v1/mcp",
-        "WP_MCP_USERNAME": "remy",
-        "WP_MCP_APP_PASSWORD": "abcd EFGH ijkl MNOP qrst UVWX"
+        "WP_MCP_USERNAME": "YOUR_USERNAME",
+        "WP_MCP_APP_PASSWORD": "YOUR_APP_PASSWORD"
       }
     }
   }
@@ -460,8 +460,8 @@ Test the connection before wiring it into anything:
 
 ```bash
 WP_MCP_URL=https://example.com/wp-json/mcp/v1/mcp \
-WP_MCP_USERNAME=remy \
-WP_MCP_APP_PASSWORD='abcd EFGH ijkl MNOP qrst UVWX' \
+WP_MCP_USERNAME=YOUR_USERNAME \
+WP_MCP_APP_PASSWORD='YOUR_APP_PASSWORD' \
 node dist/index.js --probe
 ```
 
@@ -469,7 +469,7 @@ node dist/index.js --probe
 Connected to: Example Site (https://example.com/)
 WordPress:    7.0.3 on PHP 8.2.29
 Plugin:       1.0.1
-Authenticated as: remy (administrator) via application-password
+Authenticated as: YOUR_USERNAME (administrator) via application-password
 Profile:      author
 Tools:        25 of 32 available
 Abilities API: yes
