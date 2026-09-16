@@ -1,5 +1,7 @@
 # WP MCP Connector
 
+Let Claude, Cursor, Grok, or any MCP client read and publish on your WordPress site. One plugin, no Composer, no npm.
+
 Serve a self-hosted WordPress site to AI clients over the Model Context Protocol.
 
 Claude Desktop, Claude Code, Cursor, Grok and anything else that speaks MCP can read and manage the site through 32 permission-gated tools: posts, pages, media, taxonomies, comments, SEO metadata, plugin and theme inventory, site health, and a set of emulated WP-CLI commands.
