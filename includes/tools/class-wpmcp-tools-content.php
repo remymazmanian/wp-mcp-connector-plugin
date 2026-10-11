@@ -178,7 +178,7 @@ class WPMCP_Tools_Content {
 						'content'        => WPMCP_Schema::string( __( 'The full body as WordPress block markup. Images are added separately through the images field, so do not write image markup here.', 'wp-mcp-connector' ) ),
 						'excerpt'        => WPMCP_Schema::string( __( 'Short summary used in listings and as an SEO fallback.', 'wp-mcp-connector' ) ),
 						'status'         => WPMCP_Schema::string( __( 'Defaults to draft. Only pass publish when the operator has asked for it to go live.', 'wp-mcp-connector' ), array( 'draft', 'publish', 'pending', 'private' ) ),
-						'post_type'      => WPMCP_Schema::string( __( 'Defaults to post.', 'wp-mcp-connector' ) ),
+						'post_type'      => WPMCP_Schema::string( __( 'Defaults to post.', 'wp-mcp-connector' ), $post_types ),
 						'categories'     => WPMCP_Schema::arr( __( 'Category names or slugs. Missing ones are created.', 'wp-mcp-connector' ), array( 'type' => 'string' ) ),
 						'tags'           => WPMCP_Schema::arr( __( 'Tag names or slugs.', 'wp-mcp-connector' ), array( 'type' => 'string' ) ),
 						'seo'            => WPMCP_SEO::schema(),
@@ -340,7 +340,9 @@ class WPMCP_Tools_Content {
 		$post_type = isset( $args['post_type'] ) ? $args['post_type'] : 'post';
 		$type      = get_post_type_object( $post_type );
 
-		if ( ! $type ) {
+		// Only exposed post types: wp_publish_article reaches here too, and must
+		// not create templates, navigation menus or reusable blocks.
+		if ( ! $type || ! in_array( $post_type, $this->post_type_slugs(), true ) ) {
 			return new WP_Error(
 				'wpmcp_unknown_post_type',
 				sprintf(
@@ -662,6 +664,7 @@ class WPMCP_Tools_Content {
 				$existing = (int) $spec['attachment_id'];
 
 				if ( 'attachment' !== get_post_type( $existing ) ) {
+					/* translators: %d: attachment ID. */
 					return new WP_Error( 'wpmcp_not_found', sprintf( __( 'No attachment with ID %d.', 'wp-mcp-connector' ), $existing ) );
 				}
 
@@ -759,7 +762,7 @@ class WPMCP_Tools_Content {
 
 			if ( is_wp_error( $id ) ) {
 				$problems[] = array(
-					'image'  => isset( $featured['url'] ) ? $featured['url'] : 'supplied directly',
+					'image'  => $this->image_source_label( $featured ),
 					'role'   => 'featured',
 					'reason' => $id->get_error_message(),
 				);
@@ -784,7 +787,7 @@ class WPMCP_Tools_Content {
 
 			if ( is_wp_error( $id ) ) {
 				$problems[] = array(
-					'image'  => $spec['url'],
+					'image'  => $this->image_source_label( $spec ),
 					'role'   => 'in-article',
 					'reason' => $id->get_error_message(),
 				);
@@ -1264,6 +1267,29 @@ class WPMCP_Tools_Content {
 		$start = max( 0, $position - 70 );
 
 		return ( $start > 0 ? '…' : '' ) . mb_substr( $text, $start, 200 ) . '…';
+	}
+
+	/**
+	 * Names an image spec's source for a problem report: its URL, its
+	 * attachment or upload id, or "supplied directly" for inline data.
+	 *
+	 * @param array<string,mixed> $spec Image specification.
+	 * @return string
+	 */
+	private function image_source_label( array $spec ) {
+		if ( ! empty( $spec['url'] ) ) {
+			return (string) $spec['url'];
+		}
+
+		if ( ! empty( $spec['attachment_id'] ) ) {
+			return 'attachment ' . (int) $spec['attachment_id'];
+		}
+
+		if ( ! empty( $spec['upload_id'] ) ) {
+			return 'upload ' . (string) $spec['upload_id'];
+		}
+
+		return 'supplied directly';
 	}
 
 	/**

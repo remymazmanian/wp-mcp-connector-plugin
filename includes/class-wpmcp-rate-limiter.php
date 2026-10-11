@@ -10,8 +10,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Sliding-window rate limiter backed by the object cache, falling back to
- * transients.
+ * Fixed-window rate limiter backed by the object cache, falling back to
+ * transients. Each window starts on a multiple of its length, so a client can
+ * burst up to twice the limit across a window boundary.
  *
  * An agent that loops on a failing tool can otherwise issue hundreds of writes
  * a minute. The window is per acting user, not per IP, because every MCP client

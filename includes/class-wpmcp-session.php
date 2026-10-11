@@ -24,6 +24,11 @@ class WPMCP_Session {
 	const QUEUE  = 'wpmcp_queue_';
 
 	/**
+	 * Option holding the time of the last purge_all().
+	 */
+	const OPTION_PURGED = 'wpmcp_sessions_purged';
+
+	/**
 	 * Session lifetime.
 	 *
 	 * A day rather than an hour. Sessions hold no authority of their own, so a
@@ -71,7 +76,19 @@ class WPMCP_Session {
 
 		$data = get_transient( self::PREFIX . $id );
 
-		return is_array( $data ) ? $data : null;
+		if ( ! is_array( $data ) ) {
+			return null;
+		}
+
+		// Sessions in a persistent object cache cannot be listed and deleted on
+		// deactivation, so anything opened before the last purge is ignored.
+		$purged = (int) get_option( self::OPTION_PURGED, 0 );
+
+		if ( $purged && (int) ( $data['created'] ?? 0 ) <= $purged ) {
+			return null;
+		}
+
+		return $data;
 	}
 
 	/**
@@ -214,6 +231,12 @@ class WPMCP_Session {
 		$like = $wpdb->esc_like( '_transient_' . self::QUEUE ) . '%';
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 
-		wp_cache_flush();
+		// With a persistent object cache the transients above never reached the
+		// options table. Flushing the whole cache would log out and slow down
+		// the entire site, so get() ignores those sessions instead and they
+		// expire on their own.
+		if ( wp_using_ext_object_cache() ) {
+			update_option( self::OPTION_PURGED, time(), false );
+		}
 	}
 }

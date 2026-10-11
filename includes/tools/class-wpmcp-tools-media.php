@@ -166,7 +166,7 @@ class WPMCP_Tools_Media {
 			array(
 				'name'         => 'wp_media_upload_status',
 				'title'        => __( 'Check a chunked upload', 'wp-mcp-connector' ),
-				'description'  => __( 'Ask where an in-progress upload got to. Use this after any error or interruption instead of starting again: it reports the next chunk index expected and how many bytes are already stored, so you can resume from the right place rather than resending the whole file.', 'wp-mcp-connector' ),
+				'description'  => __( 'Ask where an in-progress upload got to. Use this after any error or interruption instead of starting again: it reports next_offset, the base64 character to continue from, and how many bytes are already stored, so you can resume from the right place rather than resending the whole file.', 'wp-mcp-connector' ),
 				'group'        => 'media',
 				'capability'   => 'upload_files',
 				'profiles'     => array( 'author', 'editor', 'admin' ),
@@ -578,6 +578,19 @@ class WPMCP_Tools_Media {
 			}
 		}
 
+		if ( (int) $session['next_index'] >= self::MAX_CHUNKS ) {
+			$this->discard_upload_session( $args['upload_id'], $session );
+
+			return new WP_Error(
+				'wpmcp_too_many_chunks',
+				sprintf(
+					/* translators: %d: chunk limit. */
+					__( 'This upload passed the %d-chunk limit and was discarded. Start again with larger slices.', 'wp-mcp-connector' ),
+					self::MAX_CHUNKS
+				)
+			);
+		}
+
 		$max = (int) wpmcp()->settings()->get( 'max_upload_bytes' );
 
 		// Base64 decodes four characters to three bytes, so only a multiple of
@@ -625,6 +638,7 @@ class WPMCP_Tools_Media {
 
 		$session['b64_received'] += strlen( $data );
 		$session['b64_tail']      = $tail;
+		$session['next_index']    = (int) $session['next_index'] + 1;
 
 		$this->write_session( $args['upload_id'], $session );
 
@@ -837,7 +851,7 @@ class WPMCP_Tools_Media {
 		if ( ! is_array( $session ) ) {
 			return new WP_Error(
 				'wpmcp_unknown_upload',
-				__( 'That upload is unknown or has expired. Uploads are abandoned after 30 minutes of inactivity. Start again with wp_begin_media_upload.', 'wp-mcp-connector' )
+				__( 'That upload is unknown or has expired. Uploads are abandoned after 6 hours of inactivity. Start again with wp_begin_media_upload.', 'wp-mcp-connector' )
 			);
 		}
 
@@ -1287,14 +1301,16 @@ class WPMCP_Tools_Media {
 		/**
 		 * Filters the sibling derivative suffixes moved alongside a rename.
 		 *
-		 * A theme can build its own images from an attachment's stem, and those
-		 * never appear in attachment metadata. On this site the social card and
-		 * the Pinterest pin are both built that way, so leaving them behind
-		 * would silently break the cards until something regenerated them.
+		 * A theme can build its own images from an attachment's stem, such as a
+		 * social card saved as photo-social.jpg next to photo.jpg, and those
+		 * never appear in attachment metadata. List their suffixes here so a
+		 * rename moves them too instead of leaving them behind. Empty by
+		 * default, because a sibling with a matching name might be a separate
+		 * attachment.
 		 *
-		 * @param string[] $suffixes Filenames relative to the stem.
+		 * @param string[] $suffixes Filenames relative to the stem, e.g. '-social.jpg'.
 		 */
-		$suffixes = apply_filters( 'wpmcp_media_derivative_suffixes', array( '-social.jpg', '-pin.jpg' ) );
+		$suffixes = apply_filters( 'wpmcp_media_derivative_suffixes', array() );
 
 		foreach ( (array) $suffixes as $suffix ) {
 			$old_side = trailingslashit( $dir ) . $old_base . $suffix;
@@ -1392,6 +1408,36 @@ class WPMCP_Tools_Media {
 	 * ------------------------------------------------------------------ */
 
 	/**
+	 * The refusal for a URL whose host is not on the media allowlist, or null
+	 * when there is no allowlist or the host is on it.
+	 *
+	 * @param string   $url           URL.
+	 * @param string[] $allowed_hosts Lowercase hostnames; empty allows any.
+	 * @return WP_Error|null
+	 */
+	private function host_refused( $url, array $allowed_hosts ) {
+		if ( ! $allowed_hosts ) {
+			return null;
+		}
+
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+
+		if ( in_array( $host, $allowed_hosts, true ) ) {
+			return null;
+		}
+
+		return new WP_Error(
+			'wpmcp_host_not_allowed',
+			sprintf(
+				/* translators: 1: host, 2: allowed hosts. */
+				__( 'Downloads from "%1$s" are not permitted. This site only accepts media from: %2$s', 'wp-mcp-connector' ),
+				$host,
+				implode( ', ', $allowed_hosts )
+			)
+		);
+	}
+
+	/**
 	 * Downloads a remote file to a temporary path.
 	 *
 	 * Uses wp_safe_remote_get, which refuses loopback and private-network hosts,
@@ -1409,41 +1455,61 @@ class WPMCP_Tools_Media {
 			return new WP_Error( 'wpmcp_bad_url', __( 'That is not a valid, publicly reachable URL.', 'wp-mcp-connector' ) );
 		}
 
-		$allowed_hosts = (array) wpmcp()->settings()->get( 'allowed_media_hosts', array() );
+		$allowed_hosts = array_map( 'strtolower', (array) wpmcp()->settings()->get( 'allowed_media_hosts', array() ) );
+		$refused       = $this->host_refused( $url, $allowed_hosts );
 
-		if ( $allowed_hosts ) {
-			$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
-
-			if ( ! in_array( $host, $allowed_hosts, true ) ) {
-				return new WP_Error(
-					'wpmcp_host_not_allowed',
-					sprintf(
-						/* translators: 1: host, 2: allowed hosts. */
-						__( 'Downloads from "%1$s" are not permitted. This site only accepts media from: %2$s', 'wp-mcp-connector' ),
-						$host,
-						implode( ', ', $allowed_hosts )
-					)
-				);
-			}
+		if ( $refused ) {
+			return $refused;
 		}
 
-		$response = wp_safe_remote_get(
-			$url,
-			array(
-				'timeout'     => 45,
-				'redirection' => 5,
-				'stream'      => false,
-				'headers'     => array(
-					'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-					// Many CDNs and object stores refuse the default
-					// "WordPress/x.y; https://site" agent outright, which looks
-					// from the caller's side like the file not existing. A
-					// browser-shaped agent is what those hosts expect, and this
-					// is a plain GET of a URL the caller already has.
-					'User-Agent' => 'Mozilla/5.0 (compatible; WP-MCP-Connector/' . WPMCP_VERSION . '; +' . home_url( '/' ) . ')',
-				),
-			)
-		);
+		// With a host allowlist, redirects are followed here one hop at a time so
+		// every hop is checked against the list; otherwise an allowed host could
+		// bounce the download anywhere. The response size is capped so an
+		// oversized file is cut off instead of read into memory whole.
+		for ( $hop = 0; ; $hop++ ) {
+			$response = wp_safe_remote_get(
+				$url,
+				array(
+					'timeout'             => 45,
+					'redirection'         => $allowed_hosts ? 0 : 5,
+					'stream'              => false,
+					'limit_response_size' => $max_bytes + 1,
+					'headers'             => array(
+						'Accept'     => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+						// Many CDNs and object stores refuse the default
+						// "WordPress/x.y; https://site" agent outright, which looks
+						// from the caller's side like the file not existing. A
+						// browser-shaped agent is what those hosts expect, and this
+						// is a plain GET of a URL the caller already has.
+						'User-Agent' => 'Mozilla/5.0 (compatible; WP-MCP-Connector/' . WPMCP_VERSION . '; +' . home_url( '/' ) . ')',
+					),
+				)
+			);
+
+			if ( ! $allowed_hosts || is_wp_error( $response ) || ! in_array( (int) wp_remote_retrieve_response_code( $response ), array( 301, 302, 303, 307, 308 ), true ) ) {
+				break;
+			}
+
+			if ( $hop >= 5 ) {
+				return new WP_Error( 'wpmcp_download_failed', __( 'Could not download that file: too many redirects.', 'wp-mcp-connector' ) );
+			}
+
+			$location = wp_remote_retrieve_header( $response, 'location' );
+			$location = is_array( $location ) ? end( $location ) : (string) $location;
+			$next     = WP_Http::make_absolute_url( $location, $url );
+
+			if ( ! $next || ! wp_http_validate_url( $next ) ) {
+				return new WP_Error( 'wpmcp_bad_url', __( 'The download redirected to an address that is not publicly reachable.', 'wp-mcp-connector' ) );
+			}
+
+			$refused = $this->host_refused( $next, $allowed_hosts );
+
+			if ( $refused ) {
+				return $refused;
+			}
+
+			$url = $next;
+		}
 
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error(
@@ -1500,13 +1566,14 @@ class WPMCP_Tools_Media {
 			return new WP_Error( 'wpmcp_download_empty', __( 'The source returned an empty file.', 'wp-mcp-connector' ) );
 		}
 
+		// The download stops one byte past the limit, so the body length only
+		// says the file is too big, not how big it is.
 		if ( strlen( $body ) > $max_bytes ) {
 			return new WP_Error(
 				'wpmcp_too_large',
 				sprintf(
-					/* translators: 1: file size, 2: limit. */
-					__( 'That file is %1$s, over this site\'s %2$s upload limit for MCP.', 'wp-mcp-connector' ),
-					size_format( strlen( $body ) ),
+					/* translators: %s: size limit. */
+					__( 'That file is over this site\'s %s upload limit for MCP.', 'wp-mcp-connector' ),
 					size_format( $max_bytes )
 				)
 			);

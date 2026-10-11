@@ -151,6 +151,18 @@ class WPMCP_Abilities {
 				return new WP_Error( 'wpmcp_disabled', __( 'The MCP connector is switched off on this site.', 'wp-mcp-connector' ) );
 			}
 
+			// Abilities are reachable through the REST API and the MCP Adapter as
+			// well as this plugin's own endpoint, so they get the same gate:
+			// HTTPS, Origin, the Application Passwords setting and the site
+			// capability. WP-CLI is a local operator, not a remote client.
+			if ( ! ( defined( 'WP_CLI' ) && WP_CLI ) ) {
+				$gate = ( new WPMCP_Rest() )->check_permission( null );
+
+				if ( is_wp_error( $gate ) ) {
+					return $gate;
+				}
+			}
+
 			if ( ! $settings->is_tool_enabled( $tool ) ) {
 				return new WP_Error(
 					'wpmcp_tool_disabled',
@@ -207,17 +219,37 @@ class WPMCP_Abilities {
 			return;
 		}
 
+		$transport = 'WP\\MCP\\Transport\\HttpTransport';
+
+		if ( ! class_exists( $transport ) ) {
+			return; // An adapter release this plugin doesn't know how to drive.
+		}
+
 		try {
-			$adapter->create_server(
+			// MCP Adapter 0.7: id, namespace, route, name, description, version,
+			// transports, error handler, observability handler, tools, resources,
+			// prompts, transport permission callback.
+			$result = $adapter->create_server(
 				'wp-mcp-connector',
 				'mcp',
 				'adapter',
 				__( 'WordPress site management', 'wp-mcp-connector' ),
 				__( 'Manage posts, pages, media, taxonomies and comments on this WordPress site.', 'wp-mcp-connector' ),
 				WPMCP_VERSION,
+				array( $transport ),
+				null,
+				null,
+				$abilities,
 				array(),
-				$abilities
+				array(),
+				static function ( $request ) {
+					return ( new WPMCP_Rest() )->check_permission( $request );
+				}
 			);
+
+			if ( is_wp_error( $result ) && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( 'WP MCP Connector: MCP Adapter registration failed: ' . $result->get_error_message() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			}
 		} catch ( Throwable $e ) {
 			if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 				error_log( 'WP MCP Connector: MCP Adapter registration skipped: ' . $e->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log

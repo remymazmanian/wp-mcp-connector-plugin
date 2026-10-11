@@ -47,7 +47,7 @@ Claude Desktop / Claude Code / Cursor / Grok
                           └───────────────────┬──────────────────┘
               ┌──────────────┬────────────────┼──────────────┬─────────────┐
            Auth          Rate limiter     Registry        Abilities     Logger
-      (App Password    (sliding window   (32 tools,       mirror →
+      (App Password    (fixed window     (32 tools,       mirror →
        + Bearer         per user)         cap-gated)      WP core Abilities API
        + OAuth 2.1)
 ```
@@ -81,7 +81,7 @@ wp-mcp-connector/
 │   ├── class-wpmcp-registry.php      tool registry and exposure rules
 │   ├── class-wpmcp-schema.php        JSON Schema builders and validator
 │   ├── class-wpmcp-session.php       MCP sessions + legacy SSE message queue
-│   ├── class-wpmcp-rate-limiter.php  per-user sliding window
+│   ├── class-wpmcp-rate-limiter.php  per-user fixed window
 │   ├── class-wpmcp-logger.php        rolling activity log
 │   ├── class-wpmcp-seo.php           SEO adapter (Yoast / Rank Math / SEOPress / custom)
 │   ├── class-wpmcp-abilities.php     core Abilities API mirror + MCP Adapter handoff
@@ -162,7 +162,7 @@ The default is **Author**: it can create and update content but cannot delete an
 
 - **Required capability** — the floor for reaching the endpoints at all. Default `edit_posts`.
 - **Rate limit** — default 120 tool calls per 60 seconds per user. An agent stuck in a retry loop hits this instead of your database.
-- **Readable and writable options** — an allowlist. `wp_get_option` and `wp_update_option` refuse everything not on it, and the refusal names what is allowed.
+- **Readable and writable options** — an allowlist. `wp_get_option` and `wp_update_option` refuse everything not on it, and the refusal names what is allowed. Some options are refused even with `*` or an exact entry: the site address, admin email, user roles and registration, active plugins and themes, cron, upload paths, this plugin's own settings, and anything whose name looks like a secret, token, password, salt or key.
 - **Media download hosts** — leave empty to allow any public host. Private and loopback addresses are always blocked regardless.
 - **Legacy SSE transport** — each open stream holds a PHP worker for the configured duration. Turn it off unless a client needs it.
 
@@ -470,7 +470,7 @@ node dist/index.js --probe
 ```
 Connected to: Example Site (https://example.com/)
 WordPress:    7.0.3 on PHP 8.2.29
-Plugin:       1.0.1
+Plugin:       1.0.2
 Authenticated as: YOUR_USERNAME (administrator) via application-password
 Profile:      author
 Tools:        25 of 32 available
@@ -539,9 +539,9 @@ Flags `--url`, `--user`, `--password`, `--token`, `--probe`, `--verbose`, `--sav
 
 **`wp_insert_media_into_post`** places an already-uploaded image into a post body as a real `core/image` block, at the end, at the start, or after a numbered paragraph. It is built on `parse_blocks`/`serialize_blocks` rather than string surgery, because splicing HTML into block markup by offset is how block comments get orphaned and the editor starts reporting recovery errors. Alt text comes from the attachment, and the response warns when there is none rather than silently inserting an image nobody can read.
 
-**`wp_rename_media`** fixes the one image-SEO field that is genuinely hard to change later, because it is baked into the stored URL of the original and every generated size. It moves the original, every registered size, and sibling derivatives the theme builds from the same stem (`-social.jpg`, `-pin.jpg` here, filterable via `wpmcp_media_derivative_suffixes`), updates `_wp_attached_file`, the size metadata and the guid, and then rewrites any post content that referenced an old URL. Skipping that last step would leave a tidy filename and a broken image.
+**`wp_rename_media`** fixes the one image-SEO field that is genuinely hard to change later, because it is baked into the stored URL of the original and every generated size. It moves the original, every registered size, and any sibling derivatives the theme builds from the same stem (none by default; list suffixes such as `-social.jpg` with the `wpmcp_media_derivative_suffixes` filter), updates `_wp_attached_file`, the size metadata and the guid, and then rewrites any post content that referenced an old URL. Skipping that last step would leave a tidy filename and a broken image.
 
-`wp_upload_media` accepts a URL or base64 data. URL fetches go through `wp_safe_remote_get`, which refuses loopback and private-network addresses, and are additionally checked against the host allowlist if one is configured. Uploads without alt text come back with a warning attached.
+`wp_upload_media` accepts a URL or base64 data. URL fetches go through `wp_safe_remote_get`, which refuses loopback and private-network addresses, and are additionally checked against the host allowlist if one is configured. With an allowlist, every redirect hop is checked too, so an allowed host cannot bounce the download somewhere else. Downloads stop at `max_upload_bytes`, so an oversized file is refused without being read into memory. Uploads without alt text come back with a warning attached.
 
 **Always pass `url`, not `base64_data`, for a real image.** This is the single most common way an image upload fails, and the failure is silent from the model's side. A modest 83 KB photograph base64-encodes to about 111 KB of text, which is roughly 28,000 tokens the client has to emit inside one tool call. Hosted clients cap tool arguments far below that, so the call dies mid-argument and the model tends to blame whatever it can see, typically the site being unreachable. With `url` the server does the download and the client sends a few dozen characters.
 
@@ -555,8 +555,10 @@ Three tools remove the dead end by splitting the transfer at the call boundary, 
 
 ```
 wp_begin_media_upload    once   filename, title, alt_text, optional sha256,
+                                optional chunk_characters,
                                 optional post_id + set_featured
-wp_append_media_chunk    xN     upload_id, chunk_index, ~24,000 chars of base64
+wp_append_media_chunk    xN     upload_id, data (~24,000 chars of base64),
+                                optional offset
 wp_finish_media_upload   once   upload_id
 ```
 
@@ -566,17 +568,13 @@ A fourth tool, `wp_media_upload_status`, reports where an interrupted transfer g
 
 The design points worth knowing:
 
-- **Chunk size is negotiable, not fixed.** Pass `chunk_characters` to `wp_begin_media_upload` and the server uses that size, anywhere from 4,000 to 200,000. This matters more than it sounds: a fixed size is a guess about someone else's output limit, and guessing too high makes every transfer fragile while guessing too low makes them all slow. A client that knows it truncates above 8,000 characters asks for 8,000 and becomes reliable; one that can emit 100,000 does the same file in two calls.
-- **Corruption is caught at the chunk, not at the end.** Send `sha256` with each chunk and a truncated call is rejected on the spot, naming the index to resend. Without it a bad chunk is only discovered after every remaining chunk has been sent and the whole transfer fails.
-- **A lost response is not a failure.** If the reply never arrives the client resends, which used to be an out-of-order error that killed the upload. A byte-identical resend of the chunk already stored is now acknowledged as a duplicate and changes nothing.
-- **Losing your place is recoverable.** `wp_media_upload_status` returns the next index expected and the bytes already stored, so an interrupted client resumes rather than restarting.
+- **Chunk size is negotiable, not fixed.** Pass `chunk_characters` to `wp_begin_media_upload` and the server suggests that size back, anywhere from 500 to 400,000 (default 24,000). This matters more than it sounds: a fixed size is a guess about someone else's output limit, and guessing too high makes every transfer fragile while guessing too low makes them all slow. A client that knows it truncates above 8,000 characters asks for 8,000 and becomes reliable; one that can emit 100,000 does the same file in two calls.
+- **Resumable by character offset, not by chunk.** Every reply carries `next_offset`, the exact base64 character the server expects next. A call cut short in transit is not a failure: whatever arrived is kept, and the client continues from `next_offset`. A slice that starts past `next_offset` is refused as a gap rather than stored with a hole in it.
+- **A lost response is not a failure.** If the reply never arrives the client resends with `offset`. Characters the server already holds are skipped, and a slice it already has in full is acknowledged as a duplicate and changes nothing.
+- **Losing your place is recoverable.** `wp_media_upload_status` returns `next_offset` and the bytes already stored, so an interrupted client resumes rather than restarting.
 - **Integrity is still checked end to end.** Supply `sha256` at the start and the assembled file is verified before anything is stored. Without it the file is still type-sniffed, so corrupt bytes cannot be published as an image.
-- **Uploads are owned.** A session belongs to the account that opened it, expires after 30 minutes of inactivity, and is capped by `max_upload_bytes` and a 400-chunk ceiling.
+- **Uploads are owned.** A session belongs to the account that opened it, expires after 6 hours of inactivity, and is capped by `max_upload_bytes` and a 4,000-call ceiling.
 - **One flow, not three.** Pass `post_id` and `set_featured` at the start and the finished image is attached and set as featured without further calls.
-
-Verified on a real 123 KB photograph at a client-requested 8,000-character chunk size: 21 chunks, a deliberately truncated call rejected immediately as `wpmcp_chunk_corrupt`, a resent chunk accepted as a duplicate without corrupting the stream, a status query resuming correctly, and the assembled file byte-identical to the source by SHA-256.
-
-Verified on a real 123 KB image: seven chunks, assembled file byte-identical to the source by SHA-256, out-of-order chunks refused, and a deliberately truncated upload rejected by checksum rather than stored.
 
 ### Site
 
@@ -658,13 +656,15 @@ Then the arguments are validated against the tool's JSON Schema, and per-object 
 
 **No credentials are stored in the plugin.** Application Passwords live in WordPress core. Bearer tokens are stored as SHA-256 hashes and compared in constant time; the plaintext is shown once and never persisted.
 
-**Rate limiting** is per acting user, sliding window, backed by the object cache. Exceeding it returns a `429` with a `retryAfter` the client can honour.
+**Rate limiting** is per acting user, fixed window, backed by the object cache. Exceeding it returns a `429` with a `retryAfter` the client can honour.
 
 **SSRF protection** on media downloads comes from `wp_safe_remote_get`, plus an optional host allowlist.
 
 **Nothing installs code.** No plugin or theme installation, activation, deactivation or update. No file writes outside the media library. No shell.
 
 **Auditing.** The last 100 tool calls are recorded with the tool name, acting user, auth method, argument summary and result. Arguments whose names look like credentials are redacted before storage.
+
+**Uninstall removes everything.** Deactivating keeps settings, tokens and OAuth clients. Deleting the plugin from the Plugins screen removes them all, which revokes every Bearer token and OAuth grant it issued.
 
 ### Hardening in code
 
@@ -788,9 +788,12 @@ A tool registered this way is automatically exposed over both transports, mirror
 | `wpmcp_is_tool_enabled` | Allow or deny an individual tool. |
 | `wpmcp_tool_providers` | Register custom tool classes. |
 | `wpmcp_exposed_post_types` | Control which post types content tools accept. |
-| `wpmcp_allowed_option_keys` | Extend the option allowlist. |
+| `wpmcp_allowed_option_keys` | Extend the option allowlist. Site address, account, plugin, theme and secret-looking options stay refused even if listed. |
 | `wpmcp_allowed_origins` | Permit additional browser origins. |
 | `wpmcp_seo_backend` | Force a specific SEO backend. |
+| `wpmcp_media_derivative_suffixes` | Theme-built sibling files moved by `wp_rename_media`, such as `-social.jpg`. Empty by default. |
+| `wpmcp_dcr_rate_limit` | OAuth client registrations allowed per IP per hour (default 10). |
+| `wpmcp_refresh_grace` | Seconds a rotated refresh token can be replayed for the same result, for clients that retry a lost response (default 120; 0 disables). |
 
 ---
 

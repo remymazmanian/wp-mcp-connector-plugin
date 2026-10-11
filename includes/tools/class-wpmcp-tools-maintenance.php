@@ -489,11 +489,10 @@ class WPMCP_Tools_Maintenance {
 		/**
 		 * Filters which options MCP clients may read and write.
 		 *
-		 * A single "*" entry means every option, for an operator who wants the
-		 * connector unrestricted. Two keys stay guarded even then: siteurl and
-		 * home. Writing either one wrongly makes the site and its admin
-		 * unreachable in the same instant, so recovery needs database access
-		 * rather than another tool call. Every other option is fair game.
+		 * A single "*" entry means every option except the protected ones (see
+		 * option_protected()), which no allowlist can open: the connector's own
+		 * credentials and settings, the options that hand over the site or its
+		 * accounts, and anything named like a secret.
 		 *
 		 * @param string[] $allowed Option names, or array( '*' ).
 		 */
@@ -508,11 +507,58 @@ class WPMCP_Tools_Maintenance {
 	 * @return bool
 	 */
 	private function option_permitted( $name, array $allowed ) {
-		if ( in_array( '*', $allowed, true ) ) {
-			return ! in_array( $name, array( 'siteurl', 'home' ), true );
+		if ( $this->option_protected( $name ) ) {
+			return false;
 		}
 
-		return in_array( $name, $allowed, true );
+		return in_array( '*', $allowed, true ) || in_array( $name, $allowed, true );
+	}
+
+	/**
+	 * Options no allowlist can open, not even "*".
+	 *
+	 * - This plugin's own options: its tokens, OAuth clients and grants, and its
+	 *   settings. Reading them leaks credentials; writing them would let a client
+	 *   widen its own access.
+	 * - Options that hand over the site or its accounts in one write: siteurl
+	 *   and home (a wrong value locks everyone out), admin_email (password
+	 *   reset target), default_role and users_can_register (open sign-up as an
+	 *   administrator), the active plugin and theme lists, user roles, cron.
+	 * - Anything named like a secret, key, salt, token or password, which is
+	 *   how other plugins tend to store API credentials.
+	 *
+	 * @param string $name Option name.
+	 * @return bool
+	 */
+	private function option_protected( $name ) {
+		global $wpdb;
+
+		$exact = array(
+			'siteurl',
+			'home',
+			'admin_email',
+			'new_admin_email',
+			'default_role',
+			'users_can_register',
+			'active_plugins',
+			'active_sitewide_plugins',
+			'recently_activated',
+			'uninstall_plugins',
+			'auto_update_plugins',
+			'auto_update_themes',
+			'template',
+			'stylesheet',
+			'cron',
+			'upload_path',
+			'upload_url_path',
+			$wpdb->prefix . 'user_roles',
+		);
+
+		if ( in_array( $name, $exact, true ) || 0 === strpos( $name, 'wpmcp_' ) ) {
+			return true;
+		}
+
+		return 1 === preg_match( '/(secret|token|passw|salt|api_?key|private_?key|_key$|^key_|credential)/', $name );
 	}
 
 	/**
@@ -527,7 +573,7 @@ class WPMCP_Tools_Maintenance {
 			'wpmcp_option_not_allowed',
 			sprintf(
 				/* translators: 1: requested option name, 2: allowed option names. */
-				__( 'The option "%1$s" is not on this site\'s allowlist, so it cannot be read or written over MCP. Allowed: %2$s. An administrator can extend the list under Settings, MCP Connector.', 'wp-mcp-connector' ),
+				__( 'The option "%1$s" cannot be read or written over MCP: it is either protected (credentials, this connector\'s own settings, or options that control the site\'s address, accounts, plugins or theme) or not on this site\'s allowlist. Allowed: %2$s. An administrator can extend the list under Settings, MCP Connector.', 'wp-mcp-connector' ),
 				$name,
 				$allowed ? implode( ', ', $allowed ) : __( '(none)', 'wp-mcp-connector' )
 			)

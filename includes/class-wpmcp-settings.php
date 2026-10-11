@@ -44,7 +44,7 @@ class WPMCP_Settings {
 			'oauth_enabled'        => false,
 			'oauth_dynamic_registration' => true,
 			'oauth_default_scope'  => 'mcp',
-			'sse_enabled'          => true,
+			'sse_enabled'          => false,
 			'sse_max_duration'     => 60,
 			'rate_limit_requests'  => 120,
 			'rate_limit_window'    => 60,

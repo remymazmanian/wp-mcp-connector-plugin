@@ -73,6 +73,14 @@ class WPMCP_OAuth {
 	 */
 	const BASE = 'mcp-oauth';
 
+	/** Dynamic registration limits. */
+	const DCR_MAX_REDIRECT_URIS = 10;
+	const DCR_MAX_URI_LENGTH    = 2000;
+	const DCR_MAX_NAME_LENGTH   = 200;
+	const DCR_RATE_LIMIT        = 10;  // Registrations per IP per hour. Filter: wpmcp_dcr_rate_limit.
+	const DCR_MAX_CLIENTS       = 500; // Self-registered clients kept at once.
+	const DCR_STALE_AFTER       = 7 * DAY_IN_SECONDS;
+
 	/**
 	 * Hooks the request handler.
 	 *
@@ -97,13 +105,21 @@ class WPMCP_OAuth {
 		$path = '/' . trim( $path, '/' );
 
 		// Protected resource metadata may be requested at the bare path or with
-		// the resource's own path appended, per RFC 9728. Accept both.
+		// the resource's own path appended, per RFC 9728. Accept both. With OAuth
+		// switched off these fall through to WordPress's 404, so clients don't
+		// try a flow that can't succeed.
 		if ( 0 === strpos( $path, '/.well-known/oauth-protected-resource' ) ) {
-			$this->send_json( $this->protected_resource_metadata() );
+			if ( $this->is_enabled() ) {
+				$this->send_json( $this->protected_resource_metadata() );
+			}
+			return;
 		}
 
 		if ( 0 === strpos( $path, '/.well-known/oauth-authorization-server' ) ) {
-			$this->send_json( $this->authorization_server_metadata() );
+			if ( $this->is_enabled() ) {
+				$this->send_json( $this->authorization_server_metadata() );
+			}
+			return;
 		}
 
 		if ( 0 !== strpos( $path, '/' . self::BASE . '/' ) ) {
@@ -562,8 +578,10 @@ class WPMCP_OAuth {
 	 * @return void
 	 */
 	private function grant_refresh_token() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		$refresh = isset( $_POST['refresh_token'] ) ? sanitize_text_field( wp_unslash( $_POST['refresh_token'] ) ) : '';
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$refresh   = isset( $_POST['refresh_token'] ) ? sanitize_text_field( wp_unslash( $_POST['refresh_token'] ) ) : '';
+		$client_id = isset( $_POST['client_id'] ) ? sanitize_text_field( wp_unslash( $_POST['client_id'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		$key    = self::token_key( self::PREFIX_REFRESH, $refresh );
 		$record = self::store_get( $key );
@@ -578,6 +596,12 @@ class WPMCP_OAuth {
 			);
 		}
 
+		// Public clients identify themselves with client_id; a token presented
+		// by a different client is refused.
+		if ( '' !== $client_id && ! hash_equals( (string) $record['client_id'], $client_id ) ) {
+			$this->send_json( array( 'error' => 'invalid_grant', 'error_description' => 'The refresh token was issued to a different client.' ), 400 );
+		}
+
 		// Refresh tokens rotate, so a stolen one is usable at most once. The
 		// naive version of that deletes the presented token before issuing the
 		// replacement, which quietly bricks a connection whenever the response
@@ -589,14 +613,52 @@ class WPMCP_OAuth {
 		// produced for a short grace window. Presenting it again inside that
 		// window replays the same replacement instead of failing, which survives
 		// a dropped response without widening the reuse window meaningfully.
+		//
+		// Outside that window, a rotated token coming back means two parties hold
+		// it, so the grant is revoked (OAuth 2.1 refresh token reuse detection).
+		// The replacement pair is kept only for the grace window; the record that
+		// remembers the rotation holds no secrets.
 		if ( isset( $record['rotated_to'] ) && is_array( $record['rotated_to'] ) ) {
-			$this->send_json( $record['rotated_to'] );
+			$this->send_json( $record['rotated_to'] ); // Rotated by an earlier version, still inside its grace window.
+		}
+
+		if ( ! empty( $record['rotated'] ) ) {
+			$replay = self::store_get( $key . '|replay' );
+
+			if ( is_array( $replay ) ) {
+				$this->send_json( $replay );
+			}
+
+			self::revoke_grant( $record['grant_id'] );
+			self::store_delete( $key );
+			$this->send_json(
+				array(
+					'error'             => 'invalid_grant',
+					'error_description' => 'That refresh token was already used, so this connection has been revoked as a precaution. Connect again to continue.',
+				),
+				400
+			);
 		}
 
 		$issued = self::issue_tokens( $record['grant_id'], (int) $record['user_id'], (string) $record['scope'], (string) $record['client_id'] );
 
-		$record['rotated_to'] = $issued;
-		self::store_put( $key, $record, self::REFRESH_GRACE );
+		// Only what reuse detection needs, since one of these is kept for every
+		// rotation until the old token would have expired.
+		self::store_put(
+			$key,
+			array(
+				'grant_id'  => $record['grant_id'],
+				'client_id' => $record['client_id'],
+				'rotated'   => time(),
+			),
+			self::REFRESH_TTL
+		);
+
+		$grace = (int) apply_filters( 'wpmcp_refresh_grace', self::REFRESH_GRACE );
+
+		if ( $grace > 0 ) {
+			self::store_put( $key . '|replay', $issued, $grace );
+		}
 
 		$this->send_json( $issued );
 	}
@@ -625,17 +687,42 @@ class WPMCP_OAuth {
 			$this->send_json( array( 'error' => 'invalid_request' ), 405 );
 		}
 
-		$body = json_decode( file_get_contents( 'php://input' ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		if ( self::registration_rate_limited() ) {
+			$this->send_json(
+				array(
+					'error'             => 'temporarily_unavailable',
+					'error_description' => 'Too many client registrations from this address. Try again later.',
+				),
+				429
+			);
+		}
+
+		$body = json_decode( (string) file_get_contents( 'php://input', false, null, 0, 64 * KB_IN_BYTES ), true ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 		if ( ! is_array( $body ) ) {
 			$this->send_json( array( 'error' => 'invalid_client_metadata', 'error_description' => 'Body must be a JSON object.' ), 400 );
 		}
 
 		$redirect_uris = isset( $body['redirect_uris'] ) ? (array) $body['redirect_uris'] : array();
-		$clean         = array();
+
+		if ( count( $redirect_uris ) > self::DCR_MAX_REDIRECT_URIS ) {
+			$this->send_json(
+				array(
+					'error'             => 'invalid_client_metadata',
+					'error_description' => sprintf( 'At most %d redirect URIs can be registered.', self::DCR_MAX_REDIRECT_URIS ),
+				),
+				400
+			);
+		}
+
+		$clean = array();
 
 		foreach ( $redirect_uris as $uri ) {
-			$uri = esc_url_raw( (string) $uri );
+			if ( ! is_string( $uri ) || strlen( $uri ) > self::DCR_MAX_URI_LENGTH ) {
+				continue;
+			}
+
+			$uri = esc_url_raw( $uri );
 
 			if ( self::is_valid_redirect_uri( $uri ) ) {
 				$clean[] = $uri;
@@ -652,7 +739,18 @@ class WPMCP_OAuth {
 			);
 		}
 
-		$name = isset( $body['client_name'] ) ? sanitize_text_field( (string) $body['client_name'] ) : __( 'Unnamed client', 'wp-mcp-connector' );
+		$name = isset( $body['client_name'] ) && is_scalar( $body['client_name'] ) ? sanitize_text_field( (string) $body['client_name'] ) : '';
+		$name = '' !== $name ? mb_substr( $name, 0, self::DCR_MAX_NAME_LENGTH ) : __( 'Unnamed client', 'wp-mcp-connector' );
+
+		if ( ! self::make_room_for_dynamic_client() ) {
+			$this->send_json(
+				array(
+					'error'             => 'temporarily_unavailable',
+					'error_description' => 'This site has reached its limit of self-registered clients. An administrator can remove unused ones under Settings, MCP Connector.',
+				),
+				429
+			);
+		}
 
 		$client = self::register_client( $name, $clean, true );
 
@@ -668,6 +766,65 @@ class WPMCP_OAuth {
 			),
 			201
 		);
+	}
+
+	/**
+	 * Counts a registration against the caller's IP and reports whether it is
+	 * over the hourly limit.
+	 *
+	 * @return bool
+	 */
+	private static function registration_rate_limited() {
+		$ip    = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$key   = 'wpmcp_dcr_' . md5( $ip . wp_salt( 'nonce' ) );
+		$count = (int) get_transient( $key );
+		$limit = (int) apply_filters( 'wpmcp_dcr_rate_limit', self::DCR_RATE_LIMIT );
+
+		if ( $count >= $limit ) {
+			return true;
+		}
+
+		set_transient( $key, $count + 1, HOUR_IN_SECONDS );
+
+		return false;
+	}
+
+	/**
+	 * Drops self-registered clients that never connected and are a week old,
+	 * then reports whether there is room for one more.
+	 *
+	 * @return bool
+	 */
+	private static function make_room_for_dynamic_client() {
+		$clients = self::get_clients();
+		$in_use  = array();
+
+		foreach ( self::get_grants() as $grant ) {
+			$in_use[ $grant['client_id'] ] = true;
+		}
+
+		$changed = false;
+		$dynamic = 0;
+
+		foreach ( $clients as $id => $client ) {
+			if ( empty( $client['dynamic'] ) ) {
+				continue;
+			}
+
+			if ( empty( $in_use[ $id ] ) && (int) $client['created'] < time() - self::DCR_STALE_AFTER ) {
+				unset( $clients[ $id ] );
+				$changed = true;
+				continue;
+			}
+
+			++$dynamic;
+		}
+
+		if ( $changed ) {
+			update_option( self::OPTION_CLIENTS, $clients, 'no' );
+		}
+
+		return $dynamic < self::DCR_MAX_CLIENTS;
 	}
 
 	/* ---------------------------------------------------------------------
@@ -1127,6 +1284,10 @@ class WPMCP_OAuth {
 		header( 'Content-Type: text/html; charset=utf-8' );
 		header( 'Cache-Control: no-store' );
 		header( 'X-Robots-Tag: noindex, nofollow' );
+		// The consent page must never be framed: a hidden frame over it is how a
+		// clickjacking page would get someone to press "Approve".
+		header( 'X-Frame-Options: DENY' );
+		header( "Content-Security-Policy: frame-ancestors 'none'" );
 
 		?>
 <!doctype html>
@@ -1183,9 +1344,19 @@ class WPMCP_OAuth {
 	 * @return string
 	 */
 	private function current_url() {
-		$path = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '/';
+		// sanitize_text_field() strips every %XX octet, which mangled an encoded
+		// redirect_uri on the way back from wp-login.php and failed the flow with
+		// "Invalid redirect URI". Keep the URI byte-for-byte apart from control
+		// characters; wp-login.php validates redirect_to before using it.
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$uri = '/' . ltrim( (string) preg_replace( '/[\x00-\x20\x7F]/', '', $uri ), '/' );
 
-		return home_url( $path );
+		// REQUEST_URI already includes any subdirectory, so join it to the
+		// site's origin rather than to home_url(), which would repeat it.
+		$home   = wp_parse_url( home_url() );
+		$origin = $home['scheme'] . '://' . $home['host'] . ( isset( $home['port'] ) ? ':' . $home['port'] : '' );
+
+		return $origin . $uri;
 	}
 
 	/* ---------------------------------------------------------------------

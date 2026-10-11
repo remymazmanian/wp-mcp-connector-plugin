@@ -1,0 +1,5 @@
+# Keep tests and CI out of GitHub's source downloads.
+/.github export-ignore
+/tests export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore

@@ -173,6 +173,16 @@ class WPMCP_Rest {
 			);
 		}
 
+		// The "Allow Application Passwords" setting has to bite here: core accepts
+		// them for every REST route, so without this check unticking it changed nothing.
+		if ( ! $settings->get( 'allow_app_passwords' ) && 'application-password' === WPMCP_Auth::current_auth_method() ) {
+			return new WP_Error(
+				'wpmcp_app_passwords_disabled',
+				__( 'Application Passwords are switched off for MCP on this site. Connect with OAuth or a Bearer token instead, or an administrator can allow Application Passwords under Settings, MCP Connector.', 'wp-mcp-connector' ),
+				array( 'status' => 401 )
+			);
+		}
+
 		$capability = (string) $settings->get( 'capability', 'edit_posts' );
 
 		if ( ! current_user_can( $capability ) ) {
@@ -237,6 +247,7 @@ class WPMCP_Rest {
 	 */
 	public function handle_streamable_post( $request ) {
 		$session_id = $this->read_session_id( $request );
+		$session    = null;
 
 		if ( $session_id ) {
 			$session = WPMCP_Session::get( $session_id );
@@ -277,9 +288,34 @@ class WPMCP_Rest {
 			}
 		}
 
-		$protocol = (string) $request->get_header( 'mcp-protocol-version' );
-		$server   = new WPMCP_Server( $session_id, $protocol );
-		$payload  = json_decode( $request->get_body(), true );
+		$protocol = trim( (string) $request->get_header( 'mcp-protocol-version' ) );
+
+		// The spec requires a 400 for a protocol version the server doesn't speak.
+		// Newer clients rely on that answer to fall back to an older revision.
+		if ( '' !== $protocol && ! in_array( $protocol, WPMCP_Server::supported_versions(), true ) ) {
+			return $this->json_response(
+				( new WPMCP_Server( $session_id ) )->error(
+					null,
+					WPMCP_Server::INVALID_REQUEST,
+					sprintf(
+						/* translators: 1: requested protocol version, 2: supported versions. */
+						__( 'Unsupported MCP-Protocol-Version "%1$s". This server supports: %2$s.', 'wp-mcp-connector' ),
+						$protocol,
+						implode( ', ', WPMCP_Server::supported_versions() )
+					)
+				),
+				400
+			);
+		}
+
+		// Clients on 2024-11-05 send no header, so fall back to what the session
+		// negotiated at initialize.
+		if ( '' === $protocol && ! empty( $session['protocol_version'] ) ) {
+			$protocol = (string) $session['protocol_version'];
+		}
+
+		$server  = new WPMCP_Server( $session_id, $protocol );
+		$payload = json_decode( $request->get_body(), true );
 
 		if ( null === $payload && JSON_ERROR_NONE !== json_last_error() ) {
 			return $this->json_response(
@@ -301,7 +337,8 @@ class WPMCP_Rest {
 			}
 		}
 
-		$headers = array();
+		// Answer with the revision this session agreed on, not simply the newest.
+		$headers = array( 'MCP-Protocol-Version' => $server->protocol_version() );
 
 		if ( $server->session_id() ) {
 			$headers['Mcp-Session-Id'] = $server->session_id();

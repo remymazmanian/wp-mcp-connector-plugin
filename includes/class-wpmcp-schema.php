@@ -282,6 +282,19 @@ class WPMCP_Schema {
 					return new WP_Error( 'type', __( 'expected an object.', 'wp-mcp-connector' ) );
 				}
 
+				// Nested objects get the same checks as top-level arguments:
+				// required keys, types and unknown keys. Extra keys survive unless
+				// the schema forbids them, so tools that take open maps still work.
+				if ( isset( $property['properties'] ) || isset( $property['required'] ) ) {
+					$nested = self::validate( $value, $property );
+
+					if ( is_wp_error( $nested ) ) {
+						return new WP_Error( 'nested', $nested->get_error_message() );
+					}
+
+					return ( isset( $property['additionalProperties'] ) && false === $property['additionalProperties'] ) ? $nested : array_merge( $value, $nested );
+				}
+
 				return $value;
 
 			default:

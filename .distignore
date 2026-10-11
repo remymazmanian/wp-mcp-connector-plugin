@@ -10,3 +10,6 @@ bridge/tsconfig.json
 .distignore
 .git
 .gitignore
+.gitattributes
+.github
+tests

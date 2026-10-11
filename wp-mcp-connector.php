@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP MCP Connector
  * Description: Serves this WordPress site to AI clients (Claude, Claude Code, Cursor, Grok, ChatGPT) as a Model Context Protocol server, over Streamable HTTP and legacy HTTP+SSE, authenticated with Application Passwords, Bearer tokens, or a built-in OAuth 2.1 server.
- * Version:     1.0.1
+ * Version:     1.0.2
  * Requires at least: 6.4
  * Tested up to: 7.1
  * Requires PHP: 7.4
@@ -35,7 +35,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WPMCP_VERSION', '1.0.1' );
+define( 'WPMCP_VERSION', '1.0.2' );
 define( 'WPMCP_FILE', __FILE__ );
 define( 'WPMCP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'WPMCP_URL', plugin_dir_url( __FILE__ ) );
@@ -59,7 +59,7 @@ define( 'WPMCP_OPTION_LOG', 'wpmcp_recent_log' );
  * requested version is honoured when we know it; otherwise we answer with our
  * newest and let the client decide whether to continue.
  */
-define( 'WPMCP_PROTOCOL_VERSIONS', '2025-06-18,2025-03-26,2024-11-05' );
+define( 'WPMCP_PROTOCOL_VERSIONS', '2025-11-25,2025-06-18,2025-03-26,2024-11-05' );
 
 /**
  * Autoloader.

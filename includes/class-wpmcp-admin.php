@@ -147,6 +147,14 @@ class WPMCP_Admin {
 				$ttl     = isset( $_POST['token_ttl'] ) ? (int) $_POST['token_ttl'] : 0;
 				$scope   = isset( $_POST['token_scope'] ) ? sanitize_key( wp_unslash( $_POST['token_scope'] ) ) : '';
 
+				// A token acts as its user, so only issue one for a user you could
+				// edit yourself. On multisite this stops a site administrator from
+				// minting a token for a super admin.
+				if ( ! current_user_can( 'edit_user', $user_id ) ) {
+					add_settings_error( 'wpmcp', 'token', __( 'You can only issue tokens for users you are allowed to edit.', 'wp-mcp-connector' ), 'error' );
+					break;
+				}
+
 				$issued = WPMCP_Auth::issue_token( $user_id, $label, $ttl, $scope );
 
 				if ( is_wp_error( $issued ) ) {
