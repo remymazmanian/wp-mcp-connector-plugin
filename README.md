@@ -12,6 +12,21 @@ Claude Desktop, Claude Code, Cursor, Grok and anything else that speaks MCP can 
 - **One call publishes.** `wp_publish_article` builds a finished post — body, featured image, in-article images at named paragraphs, categories, tags and SEO — in a single tool call.
 - **Modern where it counts.** On WordPress 6.9+ every tool is also registered with the core Abilities API, so the same definitions are reachable from `/wp-json/wp-abilities/v1/` and from the official MCP Adapter if you install it. On 7.1+ each ability also carries the unified `public` exposure flag that core, the MCP Adapter and AI agents read.
 
+**Docs & setup:** [remymazmanian.com/wp-mcp-connector/](https://remymazmanian.com/wp-mcp-connector/) · [Connect Grok, ChatGPT or Claude](https://remymazmanian.com/connect-grok-chatgpt-claude-to-wordpress/)
+
+## Quick start
+
+1. **Install.** Upload the `wp-mcp-connector` folder to `wp-content/plugins/` (or zip it and use **Plugins → Add New → Upload Plugin**), then activate it.
+2. **Turn it on.** Open **Settings → MCP Connector**. The server ships switched off, on the safe **Author** profile, so enable it and pick the profile you want.
+3. **Make an Application Password.** Go to **Users → Profile → Application Passwords**, name it after your AI app, and copy the password (it's shown once).
+4. **Check it works:** `curl -u 'USERNAME:APP_PASSWORD' https://example.com/wp-json/mcp/v1/health`
+5. **Connect your AI app.** For Claude Code:
+   ```bash
+   claude mcp add --transport http wordpress https://example.com/wp-json/mcp/v1/mcp \
+     --header "Authorization: Basic $(printf '%s' 'USERNAME:APPPASSWORD' | base64)"
+   ```
+   Claude Desktop, Cursor, Grok and other apps are covered in [Connect a client](#connect-a-client).
+
 ---
 
 ## Contents
